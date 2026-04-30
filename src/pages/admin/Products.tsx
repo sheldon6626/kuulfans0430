@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { Loader2, Plus, Edit, Trash2, Box, Info } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Box, Info, Save } from 'lucide-react';
 
 export default function Products() {
   const [products, setProducts] = useState<any[]>([]);

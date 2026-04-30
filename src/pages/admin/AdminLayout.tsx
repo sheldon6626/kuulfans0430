@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, Navigate, Link, useLocation } from 'react-router-dom';
 import { auth } from '../../lib/firebase';
-import { LayoutDashboard, Package, FileText, Users, Settings, LogOut, Loader2, MessageSquare, Fan } from 'lucide-react';
+import { LayoutDashboard, Package, FileText, Users, Settings, LogOut, Loader2, MessageSquare, Fan, DownloadCloud, Bot, Globe } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 
 export default function AdminLayout() {
@@ -34,8 +34,11 @@ export default function AdminLayout() {
     { name: '产品中心', path: '/admin/products', icon: <Package className="w-5 h-5" /> },
     { name: '博客中心', path: '/admin/posts', icon: <FileText className="w-5 h-5" /> },
     { name: '表单询盘', path: '/admin/inquiries', icon: <MessageSquare className="w-5 h-5" /> },
+    { name: '下载中心', path: '/admin/downloads', icon: <DownloadCloud className="w-5 h-5" /> },
+    { name: 'AI 内容助手', path: '/admin/ai', icon: <Bot className="w-5 h-5" /> },
     { name: '用户管理', path: '/admin/users', icon: <Users className="w-5 h-5" /> },
-    { name: 'SEO & 设置', path: '/admin/settings', icon: <Settings className="w-5 h-5" /> },
+    { name: '全局 SEO', path: '/admin/seo', icon: <Globe className="w-5 h-5" /> },
+    { name: '系统设置', path: '/admin/settings', icon: <Settings className="w-5 h-5" /> },
   ];
 
   const handleLogout = () => {

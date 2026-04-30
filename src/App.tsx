@@ -17,6 +17,9 @@ import Contact from './pages/public/Contact';
 import Dashboard from './pages/admin/Dashboard';
 import Login from './pages/admin/Login';
 import Settings from './pages/admin/Settings';
+import SeoSettings from './pages/admin/SeoSettings';
+import AIContent from './pages/admin/AIContent';
+import Downloads from './pages/admin/Downloads';
 import Inquiries from './pages/admin/Inquiries';
 import AdminProducts from './pages/admin/Products';
 import Posts from './pages/admin/Posts';
@@ -39,7 +42,10 @@ export default function App() {
           <Route path="products" element={<AdminProducts />} />
           <Route path="posts" element={<Posts />} />
           <Route path="inquiries" element={<Inquiries />} />
+          <Route path="downloads" element={<Downloads />} />
+          <Route path="ai" element={<AIContent />} />
           <Route path="users" element={<Users />} />
+          <Route path="seo" element={<SeoSettings />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
