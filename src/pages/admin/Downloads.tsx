@@ -37,6 +37,8 @@ export default function Downloads() {
       setPendingFiles(selectedFiles);
       setSlugInput('');
       setShowSlugModal(true);
+      // Reset input value so the same file(s) can be selected again
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -50,7 +52,6 @@ export default function Downloads() {
     let sequenceCounter = 1;
 
     for (const file of filesToProcess) {
-      
       try {
         let finalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
         
@@ -74,71 +75,88 @@ export default function Downloads() {
         const reader = new FileReader();
         const processFile = new Promise<void>((resolve, reject) => {
            reader.onload = async (event) => {
-              const base64Data = event.target?.result as string;
-              
-              if (file.type.startsWith('image/')) {
-                 const img = new Image();
-                 img.onload = async () => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx?.drawImage(img, 0, 0);
-                    
-                    let quality = 0.9;
-                    let processedDataUrl = canvas.toDataURL('image/webp', quality);
-                    
-                    while (processedDataUrl.length > 270000 && quality > 0.1) {
-                       quality -= 0.1;
-                       processedDataUrl = canvas.toDataURL('image/webp', quality);
-                    }
-                    
-                    const base64Len = processedDataUrl.split(',')[1].length;
-                    const finalSize = Math.floor(base64Len * 0.75);
-                    const finalType = 'image/webp';
-                    
-                    await addDoc(collection(db, 'downloads'), {
-                       name: finalName,
-                       originalName: file.name,
-                       url: processedDataUrl,
-                       size: finalSize,
-                       type: finalType,
-                       alt: finalName,
-                       createdAt: serverTimestamp()
-                    });
-                    resolve();
-                 };
-                 img.onerror = () => reject(new Error('Image processing failed'));
-                 img.src = base64Data;
-              } else {
-                 if (file.size > 800 * 1024) {
-                    reject(new Error(`文件 ${file.name} 超过800KB限制。`));
-                    return;
-                 }
-                 await addDoc(collection(db, 'downloads'), {
-                    name: finalName,
-                    originalName: file.name,
-                    url: base64Data,
-                    size: file.size,
-                    type: file.type,
-                    createdAt: serverTimestamp()
-                 });
-                 resolve();
+              try {
+                const base64Data = event.target?.result as string;
+                
+                // For images (excluding SVGs)
+                if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+                   const img = new Image();
+                   img.onload = async () => {
+                      try {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx?.drawImage(img, 0, 0);
+                        
+                        let quality = 0.9;
+                        let processedDataUrl = canvas.toDataURL('image/webp', quality);
+                        
+                        // Compress if size is estimated to be > 200KB (Base64 length ~270,000)
+                        while (processedDataUrl.length > 270000 && quality > 0.1) {
+                           quality -= 0.1;
+                           processedDataUrl = canvas.toDataURL('image/webp', quality);
+                        }
+                        
+                        // If it's still way too big for Firestore (limit ~1M bytes Base64 length), we must reject
+                        if (processedDataUrl.length > 1000000) {
+                           reject(new Error(`图片经过压缩后仍然超出 800KB 存储限制。请先手动缩小图片尺寸。`));
+                           return;
+                        }
+                        
+                        const base64Len = processedDataUrl.split(',')[1].length;
+                        const finalSize = Math.floor(base64Len * 0.75);
+                        const finalType = 'image/webp';
+                        
+                        await addDoc(collection(db, 'downloads'), {
+                           name: finalName,
+                           originalName: file.name,
+                           url: processedDataUrl,
+                           size: finalSize,
+                           type: finalType,
+                           alt: finalName,
+                           createdAt: serverTimestamp()
+                        });
+                        resolve();
+                      } catch (err) {
+                        reject(err);
+                      }
+                   };
+                   img.onerror = () => reject(new Error('图片处理失败，可能格式损坏'));
+                   img.src = base64Data;
+                } else {
+                   // For documents like PDF, docx, svg etc.
+                   if (file.size > 800 * 1024) {
+                      reject(new Error(`文件 ${file.name} 大小限制为 800KB，当前为 ${(file.size/1024).toFixed(0)}KB。请由于数据库限制压缩后重试。`));
+                      return;
+                   }
+                   await addDoc(collection(db, 'downloads'), {
+                      name: finalName,
+                      originalName: file.name,
+                      url: base64Data,
+                      size: file.size,
+                      type: file.type,
+                      alt: finalName,
+                      createdAt: serverTimestamp()
+                   });
+                   resolve();
+                }
+              } catch (err) {
+                reject(err);
               }
            };
-           reader.onerror = () => reject(new Error('File reading failed'));
+           reader.onerror = () => reject(new Error('文件读取失败'));
            reader.readAsDataURL(file);
         });
 
         await processFile;
 
       } catch (err: any) {
-        alert(`处理上传错误：` + err.message);
+        alert(`处理上传错误 [${file.name}]：` + err.message);
       }
     }
 
     setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleDelete = async (file: any) => {
