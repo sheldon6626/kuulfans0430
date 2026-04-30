@@ -1,17 +1,15 @@
-import { useState, useEffect } from 'react';
-import { db, storage, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { useState, useEffect, useRef } from 'react';
+import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, addDoc, serverTimestamp, getDocs, where } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { Loader2, DownloadCloud, UploadCloud, File, Trash2, Copy, Check, FileType, CheckCircle2 } from 'lucide-react';
+import { Loader2, DownloadCloud, UploadCloud, File as FileIcon, Trash2, Copy, CheckCircle2, FileType, Image as ImageIcon } from 'lucide-react';
 
 export default function Downloads() {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [fileName, setFileName] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'downloads'), orderBy('createdAt', 'desc'));
@@ -25,82 +23,70 @@ export default function Downloads() {
     return () => unsubscribe();
   }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedFile(file);
-      // Auto fill name without extension
-      const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-      setFileName(nameWithoutExt);
-    }
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedFile || !fileName) return;
-
-    setUploading(true);
-    setProgress(0);
-
-    try {
-      // 1. Determine unique name
-      let finalName = fileName;
-      let counter = 1;
-      while (true) {
-        const checkQ = query(collection(db, 'downloads'), where('name', '==', finalName));
-        const snap = await getDocs(checkQ);
-        if (snap.empty) break;
-        finalName = `${fileName}-${String(counter).padStart(4, '0')}`;
-        counter++;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      
+      // Limit to 800KB for Firestore base64 storage
+      if (file.size > 800 * 1024) {
+        alert('由于存储限制，请上传小于 800KB 的文件。');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
       }
 
-      // 2. Upload to Storage
-      const storageRef = ref(storage, `downloads/${finalName}_${Date.now()}`);
-      const uploadTask = uploadBytesResumable(storageRef, selectedFile);
+      setUploading(true);
 
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setProgress(p);
-        },
-        (error) => {
-          console.error('Upload Error:', error);
-          alert('上传失败：' + error.message);
-          setUploading(false);
-        },
-        async () => {
-          // 3. Get URL and Save to Firestore
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+      try {
+        const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        
+        let finalName = nameWithoutExt;
+        let counter = 1;
+        while (true) {
+          const checkQ = query(collection(db, 'downloads'), where('name', '==', finalName));
+          const snap = await getDocs(checkQ);
+          if (snap.empty) break;
+          finalName = `${nameWithoutExt}-${String(counter).padStart(4, '0')}`;
+          counter++;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const base64Data = event.target?.result as string;
           
           await addDoc(collection(db, 'downloads'), {
             name: finalName,
-            originalName: fileName,
-            url: downloadUrl,
-            storagePath: uploadTask.snapshot.ref.fullPath,
-            size: selectedFile.size,
-            type: selectedFile.type,
+            originalName: file.name,
+            url: base64Data, // Save base64 directly to simulate storage
+            size: file.size,
+            type: file.type,
             createdAt: serverTimestamp()
           });
-
-          setSelectedFile(null);
-          setFileName('');
+          
           setUploading(false);
-          setProgress(0);
-        }
-      );
-    } catch (err: any) {
-      alert('上传发生错误：' + err.message);
-      setUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        };
+        reader.onerror = () => {
+          alert('读取文件失败');
+          setUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        };
+        reader.readAsDataURL(file);
+
+      } catch (err: any) {
+        alert('上传发生错误：' + err.message);
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
     }
   };
 
   const handleDelete = async (file: any) => {
     if (!window.confirm(`确定要删除文件 "${file.name}" 吗？此操作不可恢复。`)) return;
     try {
-      if (file.storagePath) {
-        const fileRef = ref(storage, file.storagePath);
-        await deleteObject(fileRef).catch(e => console.warn('Storage deletion failed', e));
-      }
       await deleteDoc(doc(db, 'downloads', file.id));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'downloads');
@@ -116,126 +102,89 @@ export default function Downloads() {
   if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin w-8 h-8 text-primary" /></div>;
 
   return (
-    <div className="max-w-6xl space-y-6">
-      <div className="border-b border-gray-200 pb-6 mb-2">
-         <h1 className="text-2xl font-bold text-gray-900">下载中心</h1>
-         <p className="text-sm text-gray-500 mt-1">集中管理网站所有的文件（图片、视频、PDF、文档等）。</p>
+    <div className="max-w-7xl space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 pb-6 mb-2">
+         <div>
+             <h1 className="text-2xl font-bold text-gray-900">媒体库</h1>
+             <p className="text-sm text-gray-500 mt-1">集中管理您的所有媒体文件，类似 WordPress 媒体中心。</p>
+         </div>
+         
+         <div>
+            <input 
+               type="file" 
+               ref={fileInputRef} 
+               onChange={handleFileChange} 
+               className="hidden" 
+            />
+            <button 
+              onClick={handleUploadClick}
+              disabled={uploading}
+              className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm shadow-primary/20 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+              {uploading ? '正在处理...' : '上传新媒体'}
+            </button>
+         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Upload Form */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-100 p-6 sticky top-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <UploadCloud className="w-5 h-5 text-primary" />
-              上传新文件
-            </h2>
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">选择文件</label>
-                <input 
-                  type="file" 
-                  onChange={handleFileChange}
-                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-primary hover:file:bg-blue-100 transition-colors"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">文件显示名称</label>
-                <input 
-                  required
-                  value={fileName}
-                  onChange={e => setFileName(e.target.value)}
-                  placeholder="请输入文件名称"
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none text-sm" 
-                />
-                <p className="text-xs text-gray-400 mt-1">如果名称重复，将自动添加 -0001 后缀。</p>
-              </div>
-
-              {uploading && (
-                 <div className="w-full bg-gray-100 rounded-full h-2.5 mb-4 overflow-hidden">
-                   <div className="bg-primary h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
-                 </div>
-              )}
-
-              <button 
-                type="submit" 
-                disabled={uploading || !selectedFile || !fileName}
-                className="w-full bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition-all shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 text-sm"
-              >
-                {uploading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> 上传中 {Math.round(progress)}%</>
-                ) : (
-                  <><UploadCloud className="w-4 h-4" /> 开始上传</>
-                )}
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* Files List */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-100 overflow-hidden">
-            <div className="p-4 border-b border-gray-50 bg-gray-50/30 flex justify-between items-center">
-               <h2 className="font-semibold text-gray-900">全部文件 ({files.length})</h2>
+      <div className="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-100 p-6 min-h-[500px]">
+         {files.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+              <ImageIcon className="w-16 h-16 text-gray-200 mb-4" />
+              <p className="text-gray-500 font-medium">没有找到媒体文件</p>
+              <p className="text-sm text-gray-400 mt-1">点击右上角"上传新媒体"添加文件</p>
             </div>
-            
-            {files.length === 0 ? (
-              <div className="p-16 text-center">
-                <File className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-                <div className="text-gray-500 font-medium">暂无文件记录</div>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
-                {files.map(file => (
-                  <div key={file.id} className="p-4 hover:bg-blue-50/20 transition-colors flex items-center justify-between group">
-                    <div className="flex items-center gap-4 overflow-hidden">
-                       <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-primary flex-shrink-0">
-                          {file.type?.startsWith('image/') ? (
-                            <img src={file.url} alt="" className="w-full h-full object-cover rounded-lg" />
-                          ) : (
-                            <FileType className="w-5 h-5" />
-                          )}
-                       </div>
-                       <div className="min-w-0">
-                          <p className="font-medium text-sm text-gray-900 truncate pr-4" title={file.name}>{file.name}</p>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                             <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                             <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                             <span>{file.createdAt?.toDate().toLocaleDateString()}</span>
-                          </div>
+         ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 auto-rows-[150px]">
+               {files.map(file => (
+                  <div key={file.id} className="group relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:border-primary transition-colors focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2">
+                    {/* Thumbnail */}
+                    <div className="w-full h-24 flex items-center justify-center bg-white border-b border-gray-100 overflow-hidden relative">
+                       {file.type?.startsWith('image/') ? (
+                         <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
+                       ) : (
+                         <FileType className="w-10 h-10 text-gray-300" />
+                       )}
+                       
+                       {/* Hover Actions */}
+                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button 
+                            onClick={() => copyToClipboard(file.url, file.id)}
+                            className="p-1.5 bg-white rounded-md text-gray-700 hover:text-primary transition-colors"
+                            title="复制链接"
+                          >
+                            {copiedId === file.id ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                          </button>
+                          <button 
+                            onClick={() => window.open(file.url, '_blank')}
+                            className="p-1.5 bg-white rounded-md text-gray-700 hover:text-primary transition-colors"
+                            title="新窗口打开"
+                          >
+                            <DownloadCloud className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(file)}
+                            className="p-1.5 bg-white rounded-md text-gray-700 hover:text-red-600 transition-colors"
+                            title="永久删除"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                        </div>
                     </div>
                     
-                    <div className="flex items-center gap-2 pl-2">
-                       <button 
-                         onClick={() => copyToClipboard(file.url, file.id)}
-                         className="p-2 text-gray-400 hover:text-primary hover:bg-blue-50 rounded-lg transition-colors border border-transparent shadow-sm hover:border-blue-100"
-                         title="复制文件链接"
-                       >
-                         {copiedId === file.id ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                       </button>
-                       <button 
-                         onClick={() => window.open(file.url, '_blank')}
-                         className="p-2 text-gray-400 hover:text-primary hover:bg-blue-50 rounded-lg transition-colors border border-transparent shadow-sm hover:border-blue-100"
-                         title="在新标签页打开"
-                       >
-                         <DownloadCloud className="w-4 h-4" />
-                       </button>
-                       <button 
-                         onClick={() => handleDelete(file)}
-                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent shadow-sm hover:border-red-100"
-                         title="删除文件"
-                       >
-                         <Trash2 className="w-4 h-4" />
-                       </button>
+                    {/* File Info */}
+                    <div className="p-2">
+                       <p className="text-xs font-medium text-gray-900 truncate" title={file.originalName || file.name}>
+                         {file.originalName || file.name}
+                       </p>
+                       <p className="text-[10px] text-gray-500 mt-1 uppercase">
+                         {file.type ? file.type.split('/')[1] : 'FILE'} · {(file.size / 1024).toFixed(0)} KB
+                       </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+               ))}
+            </div>
+         )}
       </div>
     </div>
   );

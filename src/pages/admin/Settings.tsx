@@ -89,42 +89,6 @@ export default function Settings() {
         </div>
       )}
 
-      {/* General Settings */}
-      <section className="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-50 bg-gray-50/30">
-          <div className="flex items-center gap-3">
-             <div className="w-10 h-10 rounded-lg bg-gray-50 text-gray-700 flex items-center justify-center border border-gray-200">
-                <Sliders className="w-5 h-5" />
-             </div>
-             <div>
-                <h2 className="text-lg font-bold text-gray-900">基础配置</h2>
-                <p className="text-xs text-gray-500 mt-0.5">网站名称、联系信息等基础数据</p>
-             </div>
-          </div>
-        </div>
-        
-        <div className="p-6 space-y-5">
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">网站名称 (Site Name)</label>
-                <input 
-                  value={sysConfig.siteName}
-                  onChange={e => handleChange('siteName', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none text-sm" 
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">官方邮箱 (Contact Email)</label>
-                <input 
-                  value={sysConfig.contactEmail}
-                  onChange={e => handleChange('contactEmail', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none text-sm" 
-                />
-              </div>
-           </div>
-        </div>
-      </section>
-
       {/* Visual Settings: Colors & Logos */}
       <section className="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-100 overflow-hidden">
         <div className="p-6 border-b border-gray-50 bg-gray-50/30">

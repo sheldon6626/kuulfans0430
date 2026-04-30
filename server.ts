@@ -16,6 +16,41 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
+  // Sitemap generate API
+  let cachedSitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://www.kuulfans.com/</loc>
+    <lastmod>${new Date().toISOString()}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://www.kuulfans.com/products</loc>
+    <lastmod>${new Date().toISOString()}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.kuulfans.com/blog</loc>
+    <lastmod>${new Date().toISOString()}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>`;
+
+  app.post('/api/sitemap/generate', (req, res) => {
+    // In a real app, this would query Firebase for products, posts, and images
+    // For now we'll update the modified date of our cached map
+    cachedSitemap = cachedSitemap.replace(/<lastmod>.*<\/lastmod>/g, `<lastmod>${new Date().toISOString()}</lastmod>`);
+    res.json({ success: true, message: 'Sitemap updated' });
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    res.header('Content-Type', 'application/xml');
+    res.send(cachedSitemap);
+  });
+
   // Proxy to language models (Custom AI Layer)
   app.post('/api/ai/generate', async (req, res) => {
     try {

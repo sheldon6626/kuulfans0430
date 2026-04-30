@@ -30,6 +30,7 @@ export default function AdminLayout() {
   }
 
   const navItems = [
+    { name: '查看前台网站', path: '/', icon: <Globe className="w-5 h-5 text-emerald-600" /> },
     { name: '仪表盘', path: '/admin', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: '产品中心', path: '/admin/products', icon: <Package className="w-5 h-5" /> },
     { name: '博客中心', path: '/admin/posts', icon: <FileText className="w-5 h-5" /> },

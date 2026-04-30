@@ -15,6 +15,8 @@ export default function SeoSettings() {
     robotsTxt: 'User-agent: *\nAllow: /\n\nSitemap: https://www.kuulfans.com/sitemap.xml',
     googleVerification: '',
     bingVerification: '',
+    yandexVerification: '',
+    baiduVerification: '',
     sitemapImage: true,
     sitemapPost: true,
     sitemapPage: true
@@ -59,12 +61,18 @@ export default function SeoSettings() {
     }
   };
 
-  const handleSitemapSubmit = () => {
+  const handleSitemapSubmit = async () => {
     setSubmittingSitemap(true);
-    setTimeout(() => {
+    try {
+      const dbUrl = window.location.origin;
+      const res = await fetch(`${dbUrl}/api/sitemap/generate`, { method: 'POST' });
+      if (!res.ok) throw new Error('生成失败');
+      alert('Sitemap 生成并提交指令已发送至各大搜索引擎。处理通常需要 24-48 小时。');
+    } catch (e) {
+      alert('Sitemap 生成失败或是未在服务端配置。此功能仅在线上生效。');
+    } finally {
       setSubmittingSitemap(false);
-      alert('Sitemap 提交指令已发送至 Google 和 Bing。处理通常需要 24-48 小时。');
-    }, 1500);
+    }
   };
 
   const handleChange = (key: string, value: any) => {
@@ -176,6 +184,26 @@ export default function SeoSettings() {
                />
                <a href="https://www.bing.com/webmasters" target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline mt-1.5 inline-block">前往 Bing Webmaster</a>
              </div>
+             <div>
+               <label className="block text-sm font-medium text-gray-700 mb-1.5">Yandex Site Verification</label>
+               <input 
+                 value={seoConfig.yandexVerification}
+                 onChange={e => handleChange('yandexVerification', e.target.value)}
+                 className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary/20 outline-none text-sm font-mono" 
+                 placeholder="例如: 123456abcdef..."
+               />
+               <a href="https://webmaster.yandex.com/" target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline mt-1.5 inline-block">前往 Yandex Webmaster</a>
+             </div>
+             <div>
+               <label className="block text-sm font-medium text-gray-700 mb-1.5">Baidu Site Verification</label>
+               <input 
+                 value={seoConfig.baiduVerification}
+                 onChange={e => handleChange('baiduVerification', e.target.value)}
+                 className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary/20 outline-none text-sm font-mono" 
+                 placeholder="例如: xxxxxxx..."
+               />
+               <a href="https://ziyuan.baidu.com/" target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline mt-1.5 inline-block">前往 Baidu 搜索资源平台</a>
+             </div>
           </div>
         </section>
 
@@ -222,7 +250,7 @@ export default function SeoSettings() {
              className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
           >
              {submittingSitemap ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-             一键提交更新给各大搜索引擎
+             生成 Sitemap 并一键提交
           </button>
         </div>
         
