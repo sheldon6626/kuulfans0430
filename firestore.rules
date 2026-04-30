@@ -1,0 +1,148 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    
+    // Bootstrapped admin logic - replace domain or email if needed, or check explicit DB role.
+    function isVerifiedEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    function isAdmin() {
+      // In a real app we'd verify by a role document (e.g. exists(/databases/$(database)/documents/users/$(request.auth.uid)) and extracting role)
+      // Here, let's bootstrap any logged-in verified Google user as admin for the sake of the preview, or specifically the user email.
+      // To strictly follow instructions: look up an admin doc.
+      // E.g.: return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // To prevent lockout, also allow the creator (first auth). We'll keep it simple:
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Actually, setting up the first admin user can be a chicken-and-egg problem.
+    // Allow create if user doesn't exist yet but has matching email or just let anyone create their own user if no users exist.
+    // For now, let's bootstrap by saying if the email matches a specific one, or just `isSignedIn()`.
+    function bootstrapAdmin() {
+      return isVerifiedEmail() && request.auth.token.email == 'barberagil46@gmail.com';
+    }
+    
+    function hasAdminRights() {
+      return bootstrapAdmin() || isAdmin();
+    }
+
+    // Schema Validation Helpers
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role', 'createdAt']) &&
+             data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
+             data.role is string && data.role in ['admin', 'editor', 'user'] &&
+             data.createdAt == request.time;
+    }
+    
+    function isValidUserUpdate(data) {
+      return data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
+             data.role is string && data.role in ['admin', 'editor', 'user'];
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'category', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 100 &&
+             data.createdAt == request.time;
+    }
+
+    function isValidPost(data) {
+      return data.keys().hasAll(['title', 'slug', 'content', 'authorId', 'status', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.slug is string && data.slug.size() > 0 && data.slug.size() <= 200 &&
+             data.content is string && data.content.size() <= 1000000 &&
+             data.authorId is string && data.authorId.size() <= 128 &&
+             data.status is string && data.status in ['draft', 'published'] &&
+             data.createdAt == request.time;
+    }
+
+    function isValidInquiry(data) {
+      return data.keys().hasAll(['name', 'email', 'message', 'status', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 5000 &&
+             data.status is string && data.status in ['new', 'read', 'replied'] &&
+             data.createdAt == request.time;
+    }
+
+    function isValidSetting(data) {
+      return data.keys().hasAll(['key', 'value', 'updatedAt']) &&
+             data.key is string && data.key.size() > 0 && data.key.size() <= 100 &&
+             data.value is string && data.value.size() <= 10000 &&
+             data.updatedAt == request.time;
+    }
+
+    function isValidDownload(data) {
+      return data.keys().hasAll(['title', 'fileUrl', 'uploadedAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.fileUrl is string && data.fileUrl.size() > 0 && data.fileUrl.size() <= 1000 &&
+             data.uploadedAt == request.time;
+    }
+
+    // ---------------------------------------------------------
+    // Routes
+    // ---------------------------------------------------------
+
+    match /users/{userId} {
+      allow get: if hasAdminRights() || (isSignedIn() && request.auth.uid == userId);
+      allow list: if hasAdminRights();
+      allow create: if isValidId(userId) && (hasAdminRights() || (isSignedIn() && request.auth.uid == userId)) && isValidUser(incoming());
+      allow update: if isValidId(userId) && hasAdminRights() && isValidUserUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'role', 'displayName']);
+      allow delete: if isValidId(userId) && hasAdminRights();
+    }
+
+    match /products/{productId} {
+      // Publicly readable
+      allow read: if true;
+      allow create: if isValidId(productId) && hasAdminRights() && isValidProduct(incoming());
+      allow update: if isValidId(productId) && hasAdminRights() && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'description', 'specifications', 'imageUrl', 'seoTitle', 'seoDescription', 'updatedAt', 'createdBy']);
+      allow delete: if isValidId(productId) && hasAdminRights();
+    }
+
+    match /posts/{postId} {
+      // Drafts viewable only by Admins. Published viewable by anyone.
+      allow get: if (existing().status == 'published') || hasAdminRights();
+      allow list: if (resource.data.status == 'published') || hasAdminRights();
+      allow create: if isValidId(postId) && hasAdminRights() && isValidPost(incoming());
+      allow update: if isValidId(postId) && hasAdminRights() && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'slug', 'content', 'authorId', 'status', 'publishedAt', 'seoTitle', 'seoDescription', 'updatedAt']);
+      allow delete: if isValidId(postId) && hasAdminRights();
+    }
+
+    match /inquiries/{inquiryId} {
+      // Unauthenticated users can submit inquiries
+      allow create: if isValidId(inquiryId) && isValidInquiry(incoming());
+      // Only admins can see them
+      allow read: if hasAdminRights();
+      allow update: if isValidId(inquiryId) && hasAdminRights() && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if isValidId(inquiryId) && hasAdminRights();
+    }
+
+    match /settings/{settingId} {
+      // Settings are public since they include SEO and layout configs
+      allow read: if true;
+      allow create: if isValidId(settingId) && hasAdminRights() && isValidSetting(incoming());
+      allow update: if isValidId(settingId) && hasAdminRights() && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['key', 'value', 'updatedAt', 'updatedBy']);
+      allow delete: if isValidId(settingId) && hasAdminRights();
+    }
+
+    match /downloads/{downloadId} {
+      // Publicly readable
+      allow read: if true;
+      allow create: if isValidId(downloadId) && hasAdminRights() && isValidDownload(incoming());
+      allow update: if isValidId(downloadId) && hasAdminRights() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'fileUrl', 'category']);
+      allow delete: if isValidId(downloadId) && hasAdminRights();
+    }
+  }
+}

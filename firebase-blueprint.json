@@ -1,0 +1,118 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System administrator or user.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "editor", "user"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Air cooling or ventilation product.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "specifications": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "seoTitle": { "type": "string" },
+        "seoDescription": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["name", "category", "createdAt"]
+    },
+    "Post": {
+      "title": "Blog Post",
+      "description": "Article for Blog Center.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "seoTitle": { "type": "string" },
+        "seoDescription": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "content", "authorId", "status", "createdAt"]
+    },
+    "Inquiry": {
+      "title": "Inquiry",
+      "description": "Contact form submission from user.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "company": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "read", "replied"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "message", "status", "createdAt"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Site global setting document.",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "value": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["key", "value", "updatedAt"]
+    },
+    "Download": {
+      "title": "Download",
+      "description": "Resource in download center.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "uploadedBy": { "type": "string" }
+      },
+      "required": ["title", "fileUrl", "uploadedAt"]
+    }
+  },
+  "firestore": {
+    "users": {
+        "schema": "User",
+        "description": "Collection of all users."
+    },
+    "products": {
+        "schema": "Product",
+        "description": "Collection of products."
+    },
+    "posts": {
+        "schema": "Post",
+        "description": "Collection of blog posts."
+    },
+    "inquiries": {
+        "schema": "Inquiry",
+        "description": "Collection of contact inquiries."
+    },
+    "settings": {
+        "schema": "Setting",
+        "description": "Collection of global site settings (SEO, Language)."
+    },
+    "downloads": {
+        "schema": "Download",
+        "description": "Collection of downloadable resources."
+    }
+  }
+}
