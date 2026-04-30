@@ -30,12 +30,11 @@ export default function AdminLayout() {
   }
 
   const navItems = [
-    { name: '查看前台网站', path: '/', icon: <Globe className="w-5 h-5 text-emerald-600" /> },
     { name: '仪表盘', path: '/admin', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: '产品中心', path: '/admin/products', icon: <Package className="w-5 h-5" /> },
     { name: '博客中心', path: '/admin/posts', icon: <FileText className="w-5 h-5" /> },
     { name: '表单询盘', path: '/admin/inquiries', icon: <MessageSquare className="w-5 h-5" /> },
-    { name: '下载中心', path: '/admin/downloads', icon: <DownloadCloud className="w-5 h-5" /> },
+    { name: '文件中心', path: '/admin/downloads', icon: <DownloadCloud className="w-5 h-5" /> },
     { name: 'AI 内容助手', path: '/admin/ai', icon: <Bot className="w-5 h-5" /> },
     { name: '用户管理', path: '/admin/users', icon: <Users className="w-5 h-5" /> },
     { name: '全局 SEO', path: '/admin/seo', icon: <Globe className="w-5 h-5" /> },
@@ -94,10 +93,18 @@ export default function AdminLayout() {
 
       {/* Main content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-         <header className="h-20 bg-white border-b border-gray-200 flex items-center px-8 shadow-sm z-0">
+         <header className="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-8 shadow-sm z-0">
             <h2 className="text-xl font-semibold text-gray-800">
                {navItems.find(item => location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path)))?.name || '管理后台'}
             </h2>
+            <Link 
+              to="/" 
+              target="_blank" 
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors font-medium text-sm border border-emerald-200 shadow-sm"
+            >
+              <Globe className="w-4 h-4" />
+              查看前台网站
+            </Link>
          </header>
          <div className="flex-1 overflow-y-auto p-8">
            <div className="max-w-7xl mx-auto">
