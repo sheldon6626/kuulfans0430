@@ -19,6 +19,8 @@ import Login from './pages/admin/Login';
 import Settings from './pages/admin/Settings';
 import Inquiries from './pages/admin/Inquiries';
 import AdminProducts from './pages/admin/Products';
+import Posts from './pages/admin/Posts';
+import Users from './pages/admin/Users';
 
 export default function App() {
   return (
@@ -35,9 +37,9 @@ export default function App() {
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="products" element={<AdminProducts />} />
-          <Route path="posts" element={<div>Manage Posts</div>} />
+          <Route path="posts" element={<Posts />} />
           <Route path="inquiries" element={<Inquiries />} />
-          <Route path="users" element={<div>Manage Users</div>} />
+          <Route path="users" element={<Users />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
