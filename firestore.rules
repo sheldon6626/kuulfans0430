@@ -86,6 +86,7 @@ service cloud.firestore {
 
     function isValidDownload(data) {
       return data.keys().hasAll(['name', 'originalName', 'url', 'size', 'type', 'alt', 'createdAt']) &&
+             data.keys().size() >= 7 && data.keys().size() <= 10 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
              data.originalName is string && data.originalName.size() > 0 && data.originalName.size() <= 200 &&
              data.url is string && data.url.size() > 0 && data.url.size() <= 1500000 &&

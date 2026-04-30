@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { db, storage, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, addDoc, serverTimestamp, getDocs, where } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Loader2, DownloadCloud, UploadCloud, File as FileIcon, Trash2, Copy, CheckCircle2, FileType, Image as ImageIcon, X } from 'lucide-react';
 
 export default function Downloads() {
@@ -37,7 +38,6 @@ export default function Downloads() {
       setPendingFiles(selectedFiles);
       setSlugInput('');
       setShowSlugModal(true);
-      // Reset input value so the same file(s) can be selected again
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -54,6 +54,7 @@ export default function Downloads() {
     for (const file of filesToProcess) {
       try {
         let finalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        const extension = file.name.split('.').pop();
         
         if (slugBase) {
            const paddedIndex = String(sequenceCounter).padStart(3, '0');
@@ -72,87 +73,58 @@ export default function Downloads() {
         }
         finalName = uniqueName;
 
-        const reader = new FileReader();
-        const processFile = new Promise<void>((resolve, reject) => {
-           reader.onload = async (event) => {
-              try {
-                const base64Data = event.target?.result as string;
-                
-                // For images (excluding SVGs)
-                if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
-                   const img = new Image();
-                   img.onload = async () => {
-                      try {
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        ctx?.drawImage(img, 0, 0);
-                        
-                        let quality = 0.9;
-                        let processedDataUrl = canvas.toDataURL('image/webp', quality);
-                        
-                        // Compress if size is estimated to be > 200KB (Base64 length ~270,000)
-                        while (processedDataUrl.length > 270000 && quality > 0.1) {
-                           quality -= 0.1;
-                           processedDataUrl = canvas.toDataURL('image/webp', quality);
-                        }
-                        
-                        // If it's still way too big for Firestore (limit ~1M bytes Base64 length), we must reject
-                        if (processedDataUrl.length > 1000000) {
-                           reject(new Error(`图片经过压缩后仍然超出 800KB 存储限制。请先手动缩小图片尺寸。`));
-                           return;
-                        }
-                        
-                        const base64Len = processedDataUrl.split(',')[1].length;
-                        const finalSize = Math.floor(base64Len * 0.75);
-                        const finalType = 'image/webp';
-                        
-                        await addDoc(collection(db, 'downloads'), {
-                           name: finalName,
-                           originalName: file.name,
-                           url: processedDataUrl,
-                           size: finalSize,
-                           type: finalType,
-                           alt: finalName,
-                           createdAt: serverTimestamp()
-                        });
-                        resolve();
-                      } catch (err) {
-                        reject(err);
-                      }
-                   };
-                   img.onerror = () => reject(new Error('图片处理失败，可能格式损坏'));
-                   img.src = base64Data;
-                } else {
-                   // For documents like PDF, docx, svg etc.
-                   if (file.size > 800 * 1024) {
-                      reject(new Error(`文件 ${file.name} 大小限制为 800KB，当前为 ${(file.size/1024).toFixed(0)}KB。请由于数据库限制压缩后重试。`));
-                      return;
-                   }
-                   await addDoc(collection(db, 'downloads'), {
-                      name: finalName,
-                      originalName: file.name,
-                      url: base64Data,
-                      size: file.size,
-                      type: file.type,
-                      alt: finalName,
-                      createdAt: serverTimestamp()
-                   });
-                   resolve();
-                }
-              } catch (err) {
-                reject(err);
-              }
-           };
-           reader.onerror = () => reject(new Error('文件读取失败'));
-           reader.readAsDataURL(file);
+        let webpBlob: Blob | null = null;
+        
+        if (file.type.startsWith('image/') && file.type !== 'image/svg+xml' && file.type !== 'image/webp') {
+           webpBlob = await new Promise<Blob | null>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                  const img = new Image();
+                  img.onload = () => {
+                      const canvas = document.createElement('canvas');
+                      canvas.width = img.width;
+                      canvas.height = img.height;
+                      const ctx = canvas.getContext('2d');
+                      ctx?.drawImage(img, 0, 0);
+                      canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.85);
+                  };
+                  img.onerror = () => resolve(null);
+                  img.src = e.target?.result as string;
+              };
+              reader.onerror = () => resolve(null);
+              reader.readAsDataURL(file);
+           });
+        }
+
+        const originalRef = ref(storage, `downloads/original_${Date.now()}_${finalName}.${extension}`);
+        const uploadTask = await uploadBytesResumable(originalRef, file);
+        const downloadUrlOriginal = await getDownloadURL(uploadTask.ref);
+        const storagePathOrignal = uploadTask.ref.fullPath;
+        
+        let finalWebpUrl = downloadUrlOriginal;
+        let webpStoragePath = storagePathOrignal;
+
+        if (webpBlob) {
+            const webpRef = ref(storage, `downloads/webp_${Date.now()}_${finalName}.webp`);
+            const webpTask = await uploadBytesResumable(webpRef, webpBlob);
+            finalWebpUrl = await getDownloadURL(webpTask.ref);
+            webpStoragePath = webpTask.ref.fullPath;
+        }
+
+        await addDoc(collection(db, 'downloads'), {
+           name: finalName,
+           originalName: file.name,
+           url: downloadUrlOriginal,
+           webpUrl: finalWebpUrl,
+           storagePath: storagePathOrignal,
+           webpStoragePath: webpStoragePath !== storagePathOrignal ? webpStoragePath : null,
+           size: file.size,
+           type: file.type,
+           alt: finalName,
+           createdAt: serverTimestamp()
         });
-
-        await processFile;
-
       } catch (err: any) {
-        alert(`处理上传错误 [${file.name}]：` + err.message);
+        alert(`上传失败 [${file.name}]：` + err.message);
       }
     }
 
@@ -162,6 +134,12 @@ export default function Downloads() {
   const handleDelete = async (file: any) => {
     if (!window.confirm(`确定要删除文件 "${file.name}" 吗？此操作不可恢复。`)) return;
     try {
+      if (file.storagePath) {
+         try { await deleteObject(ref(storage, file.storagePath)); } catch (e) { console.warn(e); }
+      }
+      if (file.webpStoragePath) {
+         try { await deleteObject(ref(storage, file.webpStoragePath)); } catch (e) { console.warn(e); }
+      }
       await deleteDoc(doc(db, 'downloads', file.id));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'downloads');
@@ -181,7 +159,7 @@ export default function Downloads() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 pb-6 mb-2">
          <div>
              <h1 className="text-2xl font-bold text-gray-900">文件中心</h1>
-             <p className="text-sm text-gray-500 mt-1">集中管理您的所有媒体文件，图片将自动压缩并转为 WebP modern 格式。</p>
+             <p className="text-sm text-gray-500 mt-1">集中管理您的所有媒体文件，图片维持原图上传并自动提供 WebP 加速访问。</p>
          </div>
          
          <div>
@@ -213,15 +191,19 @@ export default function Downloads() {
          ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 auto-rows-[150px]">
                {files.map(file => (
-                  <div key={file.id} className="group relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:border-primary transition-colors focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2">
+                  <div 
+                    key={file.id} 
+                    onDoubleClick={() => window.open(file.url, '_blank')}
+                    className="group relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:border-primary transition-colors focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 select-none"
+                  >
                     {/* Thumbnail */}
                     <div className="w-full h-24 flex items-center justify-center bg-gray-100 border-b border-gray-100 overflow-hidden relative">
                        {file.type?.startsWith('image/') ? (
                          <img 
-                           src={file.url} 
+                           src={file.webpUrl || file.url} 
                            alt={file.alt || file.name} 
                            loading="lazy"
-                           srcSet={`${file.url} 480w, ${file.url} 800w`}
+                           srcSet={`${file.webpUrl || file.url} 480w, ${file.webpUrl || file.url} 800w`}
                            sizes="(max-width: 600px) 480px, 800px"
                            className="w-full h-full object-cover" 
                          />
@@ -232,21 +214,21 @@ export default function Downloads() {
                        {/* Hover Actions */}
                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                           <button 
-                            onClick={() => copyToClipboard(file.url, file.id)}
+                            onClick={(e) => { e.stopPropagation(); copyToClipboard(file.url, file.id); }}
                             className="p-1.5 bg-white rounded-md text-gray-700 hover:text-primary transition-colors"
                             title="复制链接"
                           >
                             {copiedId === file.id ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                           </button>
                           <button 
-                            onClick={() => window.open(file.url, '_blank')}
+                            onClick={(e) => { e.stopPropagation(); window.open(file.url, '_blank'); }}
                             className="p-1.5 bg-white rounded-md text-gray-700 hover:text-primary transition-colors"
                             title="新窗口打开"
                           >
                             <DownloadCloud className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => handleDelete(file)}
+                            onClick={(e) => { e.stopPropagation(); handleDelete(file); }}
                             className="p-1.5 bg-white rounded-md text-gray-700 hover:text-red-600 transition-colors"
                             title="永久删除"
                           >
@@ -256,7 +238,7 @@ export default function Downloads() {
                     </div>
                     
                     {/* File Info */}
-                    <div className="p-2">
+                    <div className="p-2 cursor-default">
                        <p className="text-xs font-medium text-gray-900 truncate" title={file.originalName || file.name}>
                          {file.originalName || file.name}
                        </p>
